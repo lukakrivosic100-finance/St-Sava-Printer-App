@@ -163,7 +163,7 @@ class MainActivity : Activity() {
 
     private fun buildTestReceiptJob(): ByteArray {
         val width = 384
-        val height = 300
+        val height = 335
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
@@ -175,16 +175,17 @@ class MainActivity : Activity() {
         paint.textSize = 29f
         canvas.drawText("ST SAVA CHURCH", width / 2f, 48f, paint)
         canvas.drawLine(18f, 66f, 366f, 66f, paint.apply { strokeWidth = 2f })
-        paint.textSize = 27f
-        canvas.drawText("PRINTER TEST", width / 2f, 111f, paint)
-        paint.textSize = 19f
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        canvas.drawText("Bluetooth connection successful", width / 2f, 157f, paint)
-        canvas.drawText("Gabba Goods X5h printer", width / 2f, 190f, paint)
-        canvas.drawText(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.UK).format(Date()), width / 2f, 231f, paint)
-        canvas.drawLine(18f, 250f, 366f, 250f, paint.apply { strokeWidth = 2f })
-        paint.textSize = 17f
-        canvas.drawText("Test only - no sale recorded", width / 2f, 280f, paint)
+        paint.textSize = 29f
+        canvas.drawText("PRINTER TEST", width / 2f, 112f, paint)
+        paint.textSize = 24f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("BLUETOOTH CONNECTED", width / 2f, 165f, paint)
+        canvas.drawText("X5h PRINTER READY", width / 2f, 207f, paint)
+        paint.textSize = 23f
+        canvas.drawText(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.UK).format(Date()), width / 2f, 252f, paint)
+        canvas.drawLine(18f, 275f, 366f, 275f, paint.apply { strokeWidth = 2f })
+        paint.textSize = 21f
+        canvas.drawText("TEST ONLY - NO SALE", width / 2f, 312f, paint)
 
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
