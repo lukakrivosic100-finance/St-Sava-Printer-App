@@ -146,7 +146,7 @@ class MainActivity : Activity() {
                     output.write(bytes, offset, count)
                     output.flush()
                     offset += count
-                    Thread.sleep(4)
+                    Thread.sleep(20)
                 }
                 runOnUiThread {
                     status.text = "Test receipt sent. Check the printer."
