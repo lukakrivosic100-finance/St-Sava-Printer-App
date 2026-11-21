@@ -163,7 +163,7 @@ class MainActivity : Activity() {
 
     private fun buildTestReceiptJob(): ByteArray {
         val width = 384
-        val height = 335
+        val height = 650 // Adds approximately 4 cm of blank tear-off paper at 200 DPI
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
