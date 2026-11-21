@@ -6,6 +6,11 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -14,6 +19,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import kotlin.concurrent.thread
 
@@ -22,6 +30,7 @@ class MainActivity : Activity() {
     private var socket: BluetoothSocket? = null
     private lateinit var status: TextView
     private lateinit var deviceList: LinearLayout
+    private lateinit var printButton: Button
     private val btAdapter: BluetoothAdapter? by lazy { BluetoothAdapter.getDefaultAdapter() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,20 +53,26 @@ class MainActivity : Activity() {
             setTextColor(0xFF174B35.toInt()); gravity = Gravity.CENTER
         })
         root.addView(TextView(this).apply {
-            text = "Bluetooth setup for the church receipt printer"
-            textSize = 15f; gravity = Gravity.CENTER; setPadding(0, 8, 0, 22)
+            text = "Bluetooth receipt printer for St Sava Church"
+            textSize = 15f; gravity = Gravity.CENTER; setPadding(0, 8, 0, 18)
         })
         status = TextView(this).apply {
             text = "Checking Bluetooth…"; textSize = 16f
             setPadding(14, 14, 14, 14); setBackgroundColor(0xFFE8E4D8.toInt())
         }
         root.addView(status)
+        printButton = Button(this).apply {
+            text = "Print test receipt"
+            isEnabled = false
+            setOnClickListener { printTestReceipt() }
+        }
+        root.addView(printButton)
         root.addView(Button(this).apply {
             text = "Refresh paired devices"; setOnClickListener { showPairedDevices() }
         })
         root.addView(TextView(this).apply {
-            text = "This preview only checks the Bluetooth connection. It does not print or send printer commands yet."
-            textSize = 14f; setPadding(0, 18, 0, 12)
+            text = "Choose X5h-953E below. Connect first, then print the short test receipt."
+            textSize = 14f; setPadding(0, 12, 0, 12)
         })
         deviceList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(ScrollView(this).apply { addView(deviceList) }, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -91,13 +106,17 @@ class MainActivity : Activity() {
 
     private fun connect(device: BluetoothDevice) {
         status.text = "Connecting to " + (device.name ?: "printer") + "…"
+        printButton.isEnabled = false
         thread(name = "printer-connect") {
             try {
-                socket?.close()
+                try { socket?.close() } catch (_: IOException) { }
                 val newSocket = device.createRfcommSocketToServiceRecord(sppUuid)
                 newSocket.connect()
                 socket = newSocket
-                runOnUiThread { status.text = "Connected to " + (device.name ?: "Bluetooth device") + ". Connection test passed." }
+                runOnUiThread {
+                    status.text = "Connected to " + (device.name ?: "Bluetooth device") + ". Ready for a test print."
+                    printButton.isEnabled = true
+                }
             } catch (e: Exception) {
                 try { socket?.close() } catch (_: IOException) { }
                 socket = null
@@ -106,6 +125,148 @@ class MainActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun printTestReceipt() {
+        val activeSocket = socket
+        if (activeSocket == null || !activeSocket.isConnected) {
+            status.text = "Please connect to X5h-953E first."
+            printButton.isEnabled = false
+            return
+        }
+        printButton.isEnabled = false
+        status.text = "Sending test receipt to X5h-953E… Please wait."
+        thread(name = "printer-print") {
+            try {
+                val bytes = buildTestReceiptJob()
+                val output = activeSocket.outputStream
+                var offset = 0
+                while (offset < bytes.size) {
+                    val count = minOf(180, bytes.size - offset)
+                    output.write(bytes, offset, count)
+                    output.flush()
+                    offset += count
+                    Thread.sleep(4)
+                }
+                runOnUiThread {
+                    status.text = "Test receipt sent. Check the printer."
+                    printButton.isEnabled = true
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text = "Print attempt failed: " + e.javaClass.simpleName + ". Reconnect and try again."
+                    printButton.isEnabled = socket?.isConnected == true
+                }
+            }
+        }
+    }
+
+    private fun buildTestReceiptJob(): ByteArray {
+        val width = 384
+        val height = 300
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        paint.textSize = 29f
+        canvas.drawText("ST SAVA CHURCH", width / 2f, 48f, paint)
+        canvas.drawLine(18f, 66f, 366f, 66f, paint.apply { strokeWidth = 2f })
+        paint.textSize = 27f
+        canvas.drawText("PRINTER TEST", width / 2f, 111f, paint)
+        paint.textSize = 19f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Bluetooth connection successful", width / 2f, 157f, paint)
+        canvas.drawText("Gabba Goods X5h printer", width / 2f, 190f, paint)
+        canvas.drawText(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.UK).format(Date()), width / 2f, 231f, paint)
+        canvas.drawLine(18f, 250f, 366f, 250f, paint.apply { strokeWidth = 2f })
+        paint.textSize = 17f
+        canvas.drawText("Test only - no sale recorded", width / 2f, 280f, paint)
+
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        bitmap.recycle()
+
+        val job = ArrayList<Byte>()
+        job.addAll(packet(0xA4, byteArrayOf(0x33)))
+        job.addAll(packet(0xAF, byteArrayOf(0x88.toByte(), 0x13)))
+        job.addAll(packet(0xBE, byteArrayOf(0x00)))
+        job.addAll(packet(0xBD, byteArrayOf(0x0A)))
+
+        val line = IntArray(width)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val c = pixels[y * width + x]
+                val luminance = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+                line[x] = if (luminance < 160) 1 else 0
+            }
+            val rle = encodeRle(line)
+            if (rle.size <= (width + 7) / 8) {
+                job.addAll(packet(0xBF, rle))
+            } else {
+                val raw = ByteArray((width + 7) / 8)
+                for (x in 0 until width) {
+                    if (line[x] == 1) raw[x / 8] = (raw[x / 8].toInt() or (1 shl (7 - (x % 8)))).toByte()
+                }
+                job.addAll(packet(0xA2, raw))
+            }
+            if ((y + 1) % 200 == 0) job.addAll(packet(0xBD, byteArrayOf(0x0A)))
+        }
+        job.addAll(packet(0xA1, byteArrayOf(0x60, 0x00, 0x11)))
+        job.addAll(packet(0xA3, byteArrayOf(0x00)))
+        return ByteArray(job.size) { i -> job[i] }
+    }
+
+    private fun encodeRle(line: IntArray): ByteArray {
+        val out = ArrayList<Byte>()
+        var colour = line[0]
+        var count = 1
+        fun appendRun(c: Int, originalCount: Int) {
+            var remaining = originalCount
+            while (remaining > 127) {
+                out.add(((c shl 7) or 127).toByte())
+                remaining -= 127
+            }
+            if (remaining > 0) out.add(((c shl 7) or remaining).toByte())
+        }
+        for (i in 1 until line.size) {
+            if (line[i] == colour) count++ else {
+                appendRun(colour, count)
+                colour = line[i]
+                count = 1
+            }
+        }
+        appendRun(colour, count)
+        return ByteArray(out.size) { i -> out[i] }
+    }
+
+    private fun packet(command: Int, payload: ByteArray): List<Byte> {
+        val result = ArrayList<Byte>()
+        result.add(0x51)
+        result.add(0x78)
+        result.add(command.toByte())
+        result.add(0x00)
+        result.add((payload.size and 0xFF).toByte())
+        result.add(((payload.size shr 8) and 0xFF).toByte())
+        payload.forEach { result.add(it) }
+        result.add(crc8(payload).toByte())
+        result.add(0xFF.toByte())
+        return result
+    }
+
+    private fun crc8(data: ByteArray): Int {
+        var crc = 0
+        for (value in data) {
+            crc = crc xor (value.toInt() and 0xFF)
+            repeat(8) {
+                crc = if ((crc and 0x80) != 0) ((crc shl 1) xor 0x07) and 0xFF
+                else (crc shl 1) and 0xFF
+            }
+        }
+        return crc
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
