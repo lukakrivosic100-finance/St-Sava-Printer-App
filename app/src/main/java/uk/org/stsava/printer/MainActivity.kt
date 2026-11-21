@@ -227,28 +227,39 @@ class MainActivity : Activity() {
     }
 
     private fun buildReceiptJob(receipt: String): ByteArray {
+        // Use larger, bold characters with generous spacing: the printer's
+        // test heading is readable, while the previous small receipt font was not.
         val width = 384
         val wrapped = ArrayList<String>()
-        receipt.lines().forEach { line -> if (line.isEmpty()) wrapped.add("") else line.chunked(30).forEach { wrapped.add(it) } }
-        val lineHeight = 32
-        val height = maxOf(500, wrapped.size * lineHeight + 150)
+        receipt.lines().forEach { line ->
+            if (line.isEmpty()) wrapped.add("")
+            else line.chunked(21).forEach { wrapped.add(it) }
+        }
+        val lineHeight = 44
+        val height = maxOf(600, wrapped.size * lineHeight + 100)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL); textSize = 20f }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 27f
+            isFilterBitmap = false
+        }
         var y = 38f
-        wrapped.forEachIndexed { index, line ->
-            paint.typeface = Typeface.create(Typeface.MONOSPACE, if (index == 0) Typeface.BOLD else Typeface.NORMAL)
-            paint.textSize = if (index == 0) 24f else 20f
-            canvas.drawText(line, width / 2f, y, paint)
+        wrapped.forEach { line ->
+            if (line.isNotEmpty()) canvas.drawText(line, width / 2f, y, paint)
             y += lineHeight
         }
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
         bitmap.recycle()
         val job = ArrayList<Byte>()
-        job.addAll(packet(0xA4, byteArrayOf(0x33))); job.addAll(packet(0xAF, byteArrayOf(0x40, 0x1F)))
-        job.addAll(packet(0xBE, byteArrayOf(0x01))); job.addAll(packet(0xBD, byteArrayOf(0x0A)))
+        job.addAll(packet(0xA4, byteArrayOf(0x33)))
+        job.addAll(packet(0xAF, byteArrayOf(0x40, 0x1F)))
+        job.addAll(packet(0xBE, byteArrayOf(0x01)))
+        job.addAll(packet(0xBD, byteArrayOf(0x0A)))
         val line = IntArray(width)
         for (row in 0 until height) {
             for (x in 0 until width) {
@@ -260,12 +271,15 @@ class MainActivity : Activity() {
             if (rle.size <= (width + 7) / 8) job.addAll(packet(0xBF, rle))
             else {
                 val raw = ByteArray((width + 7) / 8)
-                for (x in 0 until width) if (line[x] == 1) raw[x / 8] = (raw[x / 8].toInt() or (1 shl (7 - (x % 8)))).toByte()
+                for (x in 0 until width) {
+                    if (line[x] == 1) raw[x / 8] = (raw[x / 8].toInt() or (1 shl (7 - (x % 8)))).toByte()
+                }
                 job.addAll(packet(0xA2, raw))
             }
             if ((row + 1) % 200 == 0) job.addAll(packet(0xBD, byteArrayOf(0x0A)))
         }
-        job.addAll(packet(0xA1, byteArrayOf(0x60, 0x00, 0x11))); job.addAll(packet(0xA3, byteArrayOf(0x00)))
+        job.addAll(packet(0xA1, byteArrayOf(0x60, 0x00, 0x11)))
+        job.addAll(packet(0xA3, byteArrayOf(0x00)))
         return ByteArray(job.size) { i -> job[i] }
     }
 
