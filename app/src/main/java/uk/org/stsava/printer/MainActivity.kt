@@ -32,14 +32,46 @@ class MainActivity : Activity() {
     private lateinit var deviceList: LinearLayout
     private lateinit var printButton: Button
     private val btAdapter: BluetoothAdapter? by lazy { BluetoothAdapter.getDefaultAdapter() }
+    private var pendingReceipt: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildScreen()
+        handlePrintIntent(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), 41)
         } else showPairedDevices()
+    }
+
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePrintIntent(intent)
+    }
+
+    private fun handlePrintIntent(intent: android.content.Intent?) {
+        if (intent?.action != android.content.Intent.ACTION_VIEW) return
+        val receipt = intent.data?.getQueryParameter("text") ?: return
+        pendingReceipt = receipt
+        status.text = "Receipt received. Connecting to X5h-953E…"
+        val bt = btAdapter ?: run { status.text = "Bluetooth is unavailable."; return }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            status.text = "Allow Nearby devices permission, then reopen the receipt from the register."
+            return
+        }
+        val device = try { bt.bondedDevices.firstOrNull { it.name == "X5h-953E" } }
+            catch (_: SecurityException) { null }
+        if (device == null) {
+            status.text = "Pair X5h-953E in Android Bluetooth settings, then send the receipt again."
+            return
+        }
+        if (socket?.isConnected == true) {
+            pendingReceipt = null
+            printReceiptText(receipt)
+        } else connect(device)
     }
 
     private fun buildScreen() {
@@ -114,8 +146,12 @@ class MainActivity : Activity() {
                 newSocket.connect()
                 socket = newSocket
                 runOnUiThread {
-                    status.text = "Connected to " + (device.name ?: "Bluetooth device") + ". Ready for a test print."
+                    status.text = "Connected to " + (device.name ?: "Bluetooth device") + "."
                     printButton.isEnabled = true
+                    pendingReceipt?.let { receipt ->
+                        pendingReceipt = null
+                        printReceiptText(receipt)
+                    } ?: run { status.text = "Connected to " + (device.name ?: "Bluetooth device") + ". Ready for a test print." }
                 }
             } catch (e: Exception) {
                 try { socket?.close() } catch (_: IOException) { }
@@ -159,6 +195,78 @@ class MainActivity : Activity() {
                 }
             }
         }
+    }
+
+
+    private fun printReceiptText(receipt: String) {
+        val activeSocket = socket
+        if (activeSocket == null || !activeSocket.isConnected) {
+            pendingReceipt = receipt
+            status.text = "Printer is not connected. Reopen the receipt from Church Register after connecting."
+            return
+        }
+        printButton.isEnabled = false
+        status.text = "Printing Church Register receipt…"
+        thread(name = "receipt-print") {
+            try {
+                val bytes = buildReceiptJob(receipt)
+                val output = activeSocket.outputStream
+                var offset = 0
+                while (offset < bytes.size) {
+                    val count = minOf(180, bytes.size - offset)
+                    output.write(bytes, offset, count)
+                    output.flush()
+                    offset += count
+                    Thread.sleep(12)
+                }
+                runOnUiThread { status.text = "Church Register receipt sent. Check the printer."; printButton.isEnabled = true }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Receipt print failed: " + e.javaClass.simpleName; printButton.isEnabled = socket?.isConnected == true }
+            }
+        }
+    }
+
+    private fun buildReceiptJob(receipt: String): ByteArray {
+        val width = 384
+        val wrapped = ArrayList<String>()
+        receipt.lines().forEach { line -> if (line.isEmpty()) wrapped.add("") else line.chunked(30).forEach { wrapped.add(it) } }
+        val lineHeight = 32
+        val height = maxOf(500, wrapped.size * lineHeight + 150)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL); textSize = 20f }
+        var y = 38f
+        wrapped.forEachIndexed { index, line ->
+            paint.typeface = Typeface.create(Typeface.MONOSPACE, if (index == 0) Typeface.BOLD else Typeface.NORMAL)
+            paint.textSize = if (index == 0) 24f else 20f
+            canvas.drawText(line, width / 2f, y, paint)
+            y += lineHeight
+        }
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        bitmap.recycle()
+        val job = ArrayList<Byte>()
+        job.addAll(packet(0xA4, byteArrayOf(0x33))); job.addAll(packet(0xAF, byteArrayOf(0x40, 0x1F)))
+        job.addAll(packet(0xBE, byteArrayOf(0x01))); job.addAll(packet(0xBD, byteArrayOf(0x0A)))
+        val line = IntArray(width)
+        for (row in 0 until height) {
+            for (x in 0 until width) {
+                val c = pixels[row * width + x]
+                val luminance = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+                line[x] = if (luminance < 160) 1 else 0
+            }
+            val rle = encodeRle(line)
+            if (rle.size <= (width + 7) / 8) job.addAll(packet(0xBF, rle))
+            else {
+                val raw = ByteArray((width + 7) / 8)
+                for (x in 0 until width) if (line[x] == 1) raw[x / 8] = (raw[x / 8].toInt() or (1 shl (7 - (x % 8)))).toByte()
+                job.addAll(packet(0xA2, raw))
+            }
+            if ((row + 1) % 200 == 0) job.addAll(packet(0xBD, byteArrayOf(0x0A)))
+        }
+        job.addAll(packet(0xA1, byteArrayOf(0x60, 0x00, 0x11))); job.addAll(packet(0xA3, byteArrayOf(0x00)))
+        return ByteArray(job.size) { i -> job[i] }
     }
 
     private fun buildTestReceiptJob(): ByteArray {
@@ -273,7 +381,10 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 41) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) showPairedDevices()
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                showPairedDevices()
+                if (pendingReceipt != null) handlePrintIntent(intent)
+            }
             else status.text = "Bluetooth permission was not granted. Enable Nearby devices permission in Settings."
         }
     }
