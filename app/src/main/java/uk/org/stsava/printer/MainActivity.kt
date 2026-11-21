@@ -146,7 +146,7 @@ class MainActivity : Activity() {
                     output.write(bytes, offset, count)
                     output.flush()
                     offset += count
-                    Thread.sleep(20)
+                    Thread.sleep(4)
                 }
                 runOnUiThread {
                     status.text = "Test receipt sent. Check the printer."
@@ -193,8 +193,8 @@ class MainActivity : Activity() {
 
         val job = ArrayList<Byte>()
         job.addAll(packet(0xA4, byteArrayOf(0x33)))
-        job.addAll(packet(0xAF, byteArrayOf(0x88.toByte(), 0x13)))
-        job.addAll(packet(0xBE, byteArrayOf(0x00)))
+        job.addAll(packet(0xAF, byteArrayOf(0x40, 0x1F)))
+        job.addAll(packet(0xBE, byteArrayOf(0x01)))
         job.addAll(packet(0xBD, byteArrayOf(0x0A)))
 
         val line = IntArray(width)
