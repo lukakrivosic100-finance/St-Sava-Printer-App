@@ -227,31 +227,41 @@ class MainActivity : Activity() {
     }
 
     private fun buildReceiptJob(receipt: String): ByteArray {
-        // Use larger, bold characters with generous spacing: the printer's
-        // test heading is readable, while the previous small receipt font was not.
+        // Match the bold headline style used on the printer test receipt,
+        // scaled down slightly for all receipt text. Wrap by measured width.
         val width = 384
-        val wrapped = ArrayList<String>()
-        receipt.lines().forEach { line ->
-            if (line.isEmpty()) wrapped.add("")
-            else line.chunked(21).forEach { wrapped.add(it) }
-        }
-        wrapped.add("")
-        wrapped.add("Cashier: Luka Krivosic")
-        val lineHeight = 44
-        val height = maxOf(600, wrapped.size * lineHeight + 100)
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.WHITE)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             textAlign = Paint.Align.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = 27f
+            textSize = 24f
             isFilterBitmap = false
-            // Keep antialiased edges but avoid faint grey output on thermal paper.
             isSubpixelText = false
             hinting = Paint.HINTING_ON
         }
+        val wrapped = ArrayList<String>()
+        receipt.lines().forEach { line ->
+            if (line.isEmpty()) wrapped.add("")
+            else {
+                var current = ""
+                line.split(Regex("\\s+")).forEach { word ->
+                    val candidate = if (current.isEmpty()) word else "$current $word"
+                    if (paint.measureText(candidate) <= width - 20) current = candidate
+                    else {
+                        if (current.isNotEmpty()) wrapped.add(current)
+                        current = word
+                    }
+                }
+                if (current.isNotEmpty()) wrapped.add(current)
+            }
+        }
+        wrapped.add("")
+        wrapped.add("Cashier: Luka Krivosic")
+        val lineHeight = 38
+        val height = maxOf(600, wrapped.size * lineHeight + 100)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
         var y = 38f
         wrapped.forEach { line ->
             if (line.isNotEmpty()) canvas.drawText(line, width / 2f, y, paint)
