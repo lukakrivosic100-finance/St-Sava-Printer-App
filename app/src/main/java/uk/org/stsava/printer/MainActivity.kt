@@ -178,11 +178,11 @@ class MainActivity : Activity() {
                 val output = activeSocket.outputStream
                 var offset = 0
                 while (offset < bytes.size) {
-                    val count = minOf(180, bytes.size - offset)
+                    val count = minOf(80, bytes.size - offset)
                     output.write(bytes, offset, count)
                     output.flush()
                     offset += count
-                    Thread.sleep(4)
+                    Thread.sleep(25)
                 }
                 runOnUiThread {
                     status.text = "Test receipt sent. Check the printer."
@@ -213,11 +213,11 @@ class MainActivity : Activity() {
                 val output = activeSocket.outputStream
                 var offset = 0
                 while (offset < bytes.size) {
-                    val count = minOf(180, bytes.size - offset)
+                    val count = minOf(80, bytes.size - offset)
                     output.write(bytes, offset, count)
                     output.flush()
                     offset += count
-                    Thread.sleep(12)
+                    Thread.sleep(25)
                 }
                 runOnUiThread { status.text = "Church Register receipt sent. Check the printer."; printButton.isEnabled = true }
             } catch (e: Exception) {
@@ -246,6 +246,9 @@ class MainActivity : Activity() {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textSize = 27f
             isFilterBitmap = false
+            // Keep antialiased edges but avoid faint grey output on thermal paper.
+            isSubpixelText = false
+            hinting = Paint.HINTING_ON
         }
         var y = 38f
         wrapped.forEach { line ->
@@ -265,7 +268,7 @@ class MainActivity : Activity() {
             for (x in 0 until width) {
                 val c = pixels[row * width + x]
                 val luminance = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
-                line[x] = if (luminance < 160) 1 else 0
+                line[x] = if (luminance < 175) 1 else 0
             }
             val rle = encodeRle(line)
             if (rle.size <= (width + 7) / 8) job.addAll(packet(0xBF, rle))
@@ -324,7 +327,7 @@ class MainActivity : Activity() {
             for (x in 0 until width) {
                 val c = pixels[y * width + x]
                 val luminance = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
-                line[x] = if (luminance < 160) 1 else 0
+                line[x] = if (luminance < 175) 1 else 0
             }
             val rle = encodeRle(line)
             if (rle.size <= (width + 7) / 8) {
