@@ -235,6 +235,8 @@ class MainActivity : Activity() {
             if (line.isEmpty()) wrapped.add("")
             else line.chunked(21).forEach { wrapped.add(it) }
         }
+        wrapped.add("")
+        wrapped.add("Cashier: Luka Krivosic")
         val lineHeight = 44
         val height = maxOf(600, wrapped.size * lineHeight + 100)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -311,6 +313,7 @@ class MainActivity : Activity() {
         canvas.drawLine(18f, 275f, 366f, 275f, paint.apply { strokeWidth = 2f })
         paint.textSize = 21f
         canvas.drawText("TEST ONLY - NO SALE", width / 2f, 312f, paint)
+        canvas.drawText("Cashier: Luka Krivosic", width / 2f, 355f, paint)
 
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
