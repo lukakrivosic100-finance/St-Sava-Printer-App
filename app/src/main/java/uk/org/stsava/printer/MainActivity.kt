@@ -321,7 +321,7 @@ class MainActivity : Activity() {
         paint.textSize = 23f
         canvas.drawText(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.UK).format(Date()), width / 2f, 252f, paint)
         canvas.drawLine(18f, 275f, 366f, 275f, paint.apply { strokeWidth = 2f })
-        paint.textSize = 21f
+        paint.textSize = 24f
         canvas.drawText("TEST ONLY - NO SALE", width / 2f, 312f, paint)
         canvas.drawText("Cashier: Luka Krivosic", width / 2f, 355f, paint)
 
